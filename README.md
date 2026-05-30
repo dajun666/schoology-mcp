@@ -41,22 +41,45 @@ absolute path — see *Register with Claude Code*.
 ## Credentials & password storage
 
 The password is **never stored in a plaintext file**. `set_credentials.py`
-saves it to the **OS keychain** (macOS Keychain) via the `keyring` library —
-encrypted at rest and unlocked by your macOS login. The server reads it from
-there at runtime.
+saves it to a keyring (encrypted at rest) via the `keyring` library, and the
+server reads it from there at runtime. The backend is chosen automatically per
+platform:
+
+| Platform | Backend | Setup |
+|----------|---------|-------|
+| macOS | Keychain | works out of the box |
+| Windows desktop | Credential Manager | works out of the box |
+| Linux desktop | Secret Service (GNOME Keyring / KWallet) | install `gnome-keyring` / `libsecret` and run a keyring daemon |
+| Headless Linux (server, WSL, Docker, cron) | AES-encrypted file (`keyrings.cryptfile`) | set a master passphrase — see below |
 
 - Update it later: re-run `python scripts/set_credentials.py`.
 - Remove it: `python scripts/set_credentials.py --delete`.
-- macOS may ask once to allow access to the keychain item — choose **Always
+- macOS/Windows may ask once to allow access to the stored item — choose **Always
   Allow** so the unattended server isn't blocked.
-- `SCHOOLOGY_USERNAME` (the student ID) stays in `.env`; it is the keychain
+- `SCHOOLOGY_USERNAME` (the student ID) stays in `.env`; it is the keyring
   lookup key, not a secret.
 - Fallback: if you set the `SCHOOLOGY_PASSWORD` environment variable, it is used
-  instead of the keychain (handy for throwaway/CI use).
+  instead of the keyring (handy for throwaway/CI use).
 
-Caveat: the keychain protects the password at rest and keeps it out of dotfiles,
-backups and git — but any process running as your macOS user can still read it.
-It is strictly better than a plaintext `.env`, not a sandbox.
+### Headless Linux (no OS keychain)
+
+There is no OS secret store on a headless box, so use the encrypted-file
+backend. A master passphrase both selects it and unlocks it:
+
+```bash
+export SCHOOLOGY_KEYRING_PASS='your-master-passphrase'
+python scripts/set_credentials.py        # stores to ~/.local/share/schoology-mcp/credentials.cfg (AES)
+```
+
+Then run the **server** with the **same** `SCHOOLOGY_KEYRING_PASS` in its
+environment — e.g. a systemd `EnvironmentFile` (perms `600`) or the MCP client's
+`env` block. Without the passphrase the server cannot decrypt the file and will
+fail with a clear error rather than falling back to plaintext.
+
+Caveat: a keyring protects the password at rest and keeps it out of dotfiles,
+backups and git — but any process running as your user can still read it (and
+for the encrypted file, anyone who has both the file and the passphrase). It is
+strictly better than a plaintext `.env`, not a sandbox.
 
 ## Verify login (do this first)
 

@@ -3,3 +3,6 @@ playwright>=1.57
 beautifulsoup4>=4.12
 python-dotenv>=1.0
 keyring>=24
+# Encrypted-file keyring backend for headless Linux (no OS secret store).
+# Harmless elsewhere; only used when SCHOOLOGY_KEYRING_BACKEND=cryptfile.
+keyrings.cryptfile>=1.3
