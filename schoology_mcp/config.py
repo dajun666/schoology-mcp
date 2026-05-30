@@ -34,9 +34,71 @@ HEADLESS = _flag("SCHOOLOGY_HEADLESS", True)
 
 # The password is resolved at runtime and never required to live in a file:
 #   1. SCHOOLOGY_PASSWORD env var, if explicitly set (e.g. an MCP `env` block);
-#   2. otherwise the OS keychain (macOS Keychain) under KEYRING_SERVICE.
+#   2. otherwise a keyring backend under KEYRING_SERVICE.
+#
+# The keyring backend is cross-platform:
+#   - "os" (default): the native OS keychain via the `keyring` library --
+#     macOS Keychain, Windows Credential Manager, or Linux Secret Service.
+#   - "cryptfile": an AES-encrypted file (`keyrings.cryptfile`) unlocked by a
+#     master passphrase. Intended for headless Linux (servers, WSL, Docker,
+#     cron) where no OS secret store is running.
 KEYRING_SERVICE = "schoology-mcp"
 _PASSWORD_ENV = os.getenv("SCHOOLOGY_PASSWORD")
+
+# Keyring backend selection. A set passphrase implicitly selects "cryptfile".
+KEYRING_BACKEND = (os.getenv("SCHOOLOGY_KEYRING_BACKEND") or "os").strip().lower()
+_KEYRING_PASS = os.getenv("SCHOOLOGY_KEYRING_PASS")
+KEYRING_FILE = Path(
+    os.getenv("SCHOOLOGY_KEYRING_FILE")
+    or (Path.home() / ".local" / "share" / "schoology-mcp" / "credentials.cfg")
+)
+
+
+def _use_cryptfile() -> bool:
+    """True when the encrypted-file backend should be used.
+
+    Explicitly selected via SCHOOLOGY_KEYRING_BACKEND=cryptfile, or implicitly
+    when a master passphrase is set and no other backend was requested.
+    """
+    if KEYRING_BACKEND == "cryptfile":
+        return True
+    return KEYRING_BACKEND == "os" and bool(_KEYRING_PASS)
+
+
+def _get_keyring():
+    """Return the keyring backend to read/write the password, or None.
+
+    Returns None (rather than prompting or raising) when the backend cannot be
+    used unattended -- e.g. the cryptfile backend with no passphrase available,
+    or a missing dependency. Callers treat None as "no password resolvable".
+    """
+    if _use_cryptfile():
+        try:
+            from keyrings.cryptfile.cryptfile import CryptFileKeyring
+        except ImportError:
+            return None
+        if not _KEYRING_PASS:
+            # No passphrase: do not trigger the library's interactive prompt
+            # in the (unattended) server path.
+            return None
+        kr = CryptFileKeyring()
+        kr.file_path = str(KEYRING_FILE)
+        try:
+            # Assigning the key eagerly unlocks an existing file; a wrong
+            # passphrase raises here -- degrade to None rather than leak a
+            # traceback.
+            kr.keyring_key = _KEYRING_PASS
+        except Exception:  # noqa: BLE001 - wrong passphrase / corrupt file
+            return None
+        return kr
+    try:
+        import keyring
+    except ImportError:
+        return None
+    try:
+        return keyring.get_keyring()
+    except Exception:  # noqa: BLE001 - no usable backend
+        return None
 
 # Keep-alive: periodically re-visit Schoology so the (short-lived) session
 # stays warm between tool calls. Re-logs in automatically if it expired anyway.
@@ -50,21 +112,20 @@ STORAGE_STATE_PATH = Path(
 
 
 def _password_from_keyring() -> str | None:
-    """Read the password from the OS keychain, if available."""
+    """Read the password from the configured keyring backend, if available."""
     if not USERNAME:
         return None
-    try:
-        import keyring
-    except ImportError:
+    kr = _get_keyring()
+    if kr is None:
         return None
     try:
-        return keyring.get_password(KEYRING_SERVICE, USERNAME)
-    except Exception:  # noqa: BLE001 - keychain locked / backend unavailable
+        return kr.get_password(KEYRING_SERVICE, USERNAME)
+    except Exception:  # noqa: BLE001 - locked / wrong passphrase / unavailable
         return None
 
 
 def get_password() -> str | None:
-    """Resolve the password: explicit env var first, then the OS keychain."""
+    """Resolve the password: explicit env var first, then the keyring."""
     return _PASSWORD_ENV or _password_from_keyring()
 
 
@@ -76,8 +137,17 @@ def require_credentials() -> None:
             f"{PROJECT_ROOT / '.env'} and set your 8-digit student ID."
         )
     if not get_password():
+        if _use_cryptfile() and not _KEYRING_PASS:
+            raise RuntimeError(
+                "Encrypted-file keyring selected but SCHOOLOGY_KEYRING_PASS is "
+                "not set. Set the master passphrase in this process's "
+                "environment (the same one used with set_credentials.py)."
+            )
         raise RuntimeError(
-            "No password found. Store it once in the OS keychain with:\n"
+            "No password found. Store it once with:\n"
             "    python scripts/set_credentials.py\n"
-            "(or, as a fallback, set the SCHOOLOGY_PASSWORD environment variable)."
+            "On macOS/Windows/Linux-desktop this uses the OS keychain. On "
+            "headless Linux, set SCHOOLOGY_KEYRING_PASS first to use the "
+            "encrypted-file store.\n"
+            "(Or, as a fallback, set the SCHOOLOGY_PASSWORD environment variable.)"
         )

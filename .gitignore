@@ -1,5 +1,6 @@
 .env
 storage_state.json
+credentials.cfg
 dumps/
 __pycache__/
 *.pyc
