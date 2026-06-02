@@ -17,6 +17,19 @@ from schoology_mcp import config, parsers
 from schoology_mcp.browser import SchoologyClient
 
 _ASSIGNMENT_ID_RE = re.compile(r"/assignment/(\d+)")
+_COURSE_ID_RE = re.compile(r"/course/(\d+)")
+_PAGE_ID_RE = re.compile(r"/page/(\d+)")
+
+
+def _course_materials_path(url_or_id: str) -> str:
+    """Normalize a full course URL, /course/NNN path, or bare id to a fetch path."""
+    s = (url_or_id or "").strip()
+    if s.isdigit():
+        return f"/course/{s}/materials"
+    m = _COURSE_ID_RE.search(s)
+    if m:
+        return f"/course/{m.group(1)}/materials"
+    raise ValueError(f"Not a recognizable Schoology course URL/ID: {url_or_id!r}")
 
 
 def _assignment_path(url_or_id: str) -> str:
@@ -132,6 +145,92 @@ async def get_assignment_info(url_or_id: str) -> dict:
     info = parsers.parse_assignment_info(html, config.BASE_URL)
     info["url"] = f"{config.BASE_URL}{path}"
     return info
+
+
+@mcp.tool()
+async def get_course_materials(
+    course_id_or_url: str,
+    include_folder_contents: bool = True,
+) -> dict:
+    """Get the materials list for a Schoology course.
+
+    Accepts a full course URL, a relative path like `/course/123`, or the bare
+    numeric course id. Returns all top-level materials (folders, assignments,
+    documents, pages, links). With `include_folder_contents=True` (default)
+    each folder's contents are fetched too and returned with a `folder` field
+    indicating which folder they came from.
+    """
+    root_path = _course_materials_path(course_id_or_url)
+    html = await client.fetch(
+        root_path, wait_selector="#folder-contents-table, .s-js-materials-body"
+    )
+    top_level = parsers.parse_course_materials(html, config.BASE_URL)
+
+    materials = []
+    for item in top_level:
+        item["folder"] = None
+        if item["type"] == "folder" and include_folder_contents and item.get("url"):
+            folder_title = item["title"]
+            # Derive the ?f=NNN path from the full URL for client.fetch()
+            folder_path = item["url"].replace(config.BASE_URL, "")
+            try:
+                folder_html = await client.fetch(
+                    folder_path,
+                    wait_selector="#folder-contents-table, .s-js-materials-body",
+                )
+                for child in parsers.parse_course_materials(folder_html, config.BASE_URL):
+                    child["folder"] = folder_title
+                    materials.append(child)
+            except Exception as exc:  # noqa: BLE001
+                item["fetch_error"] = str(exc)
+                materials.append(item)
+        else:
+            materials.append(item)
+
+    return {
+        "base_url": config.BASE_URL,
+        "course_url": f"{config.BASE_URL}{root_path}",
+        "materials": materials,
+    }
+
+
+@mcp.tool()
+async def get_material(url: str) -> dict:
+    """Open and read a single Schoology material by URL.
+
+    Accepts any material URL returned by `get_course_materials`. Dispatches
+    automatically by URL type:
+      - /assignment/NNN        → full assignment details (description, due, attachments)
+      - /page/NNN              → page title and body text
+      - /materials/gp/NNN      → file/document with download and viewer URLs
+      - /materials/link/view/NNN → external link title and resolved URL
+
+    Pass the full URL (https://...) or a relative path.
+    """
+    url = url.strip()
+    # Normalize to a relative path for fetching.
+    path = url.replace(config.BASE_URL, "")
+
+    if "/assignment/" in path:
+        path = _assignment_path(path)
+        html = await client.fetch(path, wait_selector=".info-body, #main h1, .page-title")
+        info = parsers.parse_assignment_info(html, config.BASE_URL)
+        info["url"] = f"{config.BASE_URL}{path}"
+        return info
+
+    if "/page/" in path:
+        html = await client.fetch(path, wait_selector="h1.page-title, .s-rte")
+        return parsers.parse_page_content(html, config.BASE_URL)
+
+    if "/materials/link/view/" in path:
+        html = await client.fetch(path, wait_selector="h1.page-title")
+        return parsers.parse_link_info(html, config.BASE_URL)
+
+    if "/materials/gp/" in path or "/materials/" in path:
+        html = await client.fetch(path, wait_selector="h1.page-title, .attachments")
+        return parsers.parse_document_info(html, config.BASE_URL)
+
+    raise ValueError(f"Unrecognized Schoology material URL: {url!r}")
 
 
 @mcp.tool()
