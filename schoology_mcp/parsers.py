@@ -343,3 +343,124 @@ def parse_recent_posts(html, base_url, limit=20):
         if len(posts) >= limit:
             break
     return posts
+
+
+# --------------------------------------------------------------------------
+# Course materials (verified against real /course/NNN/materials dumps)
+# --------------------------------------------------------------------------
+
+# Materials page uses #folder-contents-table with rows:
+#   tr.material-row-folder            → folder, link to ?f=NNN
+#   tr.dr.type-assignment             → assignment, link to /assignment/NNN
+#   tr.dr.type-document               → file/link/PDF, link to /course/.../materials/...
+#   tr.dr.type-page                   → page, link to /page/NNN
+#   tr.dr.type-discussion             → discussion (same pattern)
+#
+# All items have a single td.folder-contents-cell with the title in the first <a>.
+
+def _material_type_from_row(row):
+    """Infer material type from the TR's class list."""
+    classes = row.get("class") or []
+    if "material-row-folder" in classes:
+        return "folder"
+    for cls in classes:
+        if cls.startswith("type-"):
+            return cls[5:]  # e.g. "assignment", "document", "page", "discussion"
+    return "unknown"
+
+
+def parse_course_materials(html, base_url):
+    """Extract materials from a Schoology course materials page (root or folder).
+
+    Returns a list of dicts with keys: type, title, url, preview.
+    For folders the url points to the folder page (?f=NNN).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.select_one("#folder-contents-table")
+    if not table:
+        return []
+    items = []
+    for row in table.select("tr"):
+        item_type = _material_type_from_row(row)
+        td = row.select_one("td.folder-contents-cell")
+        if not td:
+            continue
+        a = td.find("a", href=True)
+        title = _clean_text(a) if a else _clean_text(td)
+        if not title:
+            continue
+        url = absolute_url(a["href"], base_url) if a else None
+        # Strip the type-label prefix (e.g. "Expand folder. Folder. Title..." → "Title")
+        full_text = _clean_text(td) or ""
+        preview = None
+        if item_type == "folder" and title and title in full_text:
+            after = full_text[full_text.index(title) + len(title):].strip()
+            if after:
+                preview = after[:200]
+        items.append({"type": item_type, "title": title, "url": url, "preview": preview})
+    return items
+
+
+# --------------------------------------------------------------------------
+# Individual material pages (page, document/file, external link)
+# --------------------------------------------------------------------------
+
+def _strip_lesson_plan_suffix(text):
+    if not text:
+        return text
+    import re as _re
+    return _re.sub(r"\s*\d+\s+lesson plans?\s*$", "", text).strip() or None
+
+
+def parse_page_content(html, base_url):
+    """Extract content from a Schoology Page (/page/NNN)."""
+    soup = BeautifulSoup(html, "html.parser")
+    title = _strip_lesson_plan_suffix(_clean_text(soup.select_one("h1.page-title")))
+    course = _first_course_breadcrumb(soup)
+    body_el = soup.select_one(".s-rte, .info-body, .page-body")
+    body = _clean_text(body_el)
+    body_html = body_el.decode_contents().strip() if body_el else None
+    return {"type": "page", "title": title, "course": course, "body": body, "body_html": body_html}
+
+
+def parse_document_info(html, base_url):
+    """Extract info from a Schoology file/document page (/materials/gp/NNN)."""
+    soup = BeautifulSoup(html, "html.parser")
+    title_el = soup.select_one("h1.page-title")
+    title = _clean_text(title_el)
+    if title:
+        title = title.split(" 0 lesson plans")[0].strip()
+    course = _first_course_breadcrumb(soup)
+    download_url = viewer_url = None
+    for a in soup.select("a[href*='/attachment/']"):
+        href = a["href"]
+        if "/source/" in href and not download_url:
+            download_url = absolute_url(href, base_url)
+        elif "/docviewer" in href and not viewer_url:
+            viewer_url = absolute_url(href, base_url)
+    return {
+        "type": "document",
+        "title": title,
+        "course": course,
+        "download_url": download_url,
+        "viewer_url": viewer_url,
+    }
+
+
+def parse_link_info(html, base_url):
+    """Extract the external URL from a Schoology link material page (/materials/link/view/NNN)."""
+    import urllib.parse as _up
+    soup = BeautifulSoup(html, "html.parser")
+    title_el = soup.select_one("h1.page-title")
+    title = _clean_text(title_el)
+    if title:
+        title = title.split(" 0 lesson plans")[0].strip()
+    course = _first_course_breadcrumb(soup)
+    external_url = None
+    for a in soup.select("a[href*='/link?']"):
+        href = a["href"]
+        qs = _up.parse_qs(_up.urlparse(href).query)
+        if "path" in qs:
+            external_url = qs["path"][0]
+            break
+    return {"type": "link", "title": title, "course": course, "url": external_url}
