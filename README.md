@@ -12,7 +12,7 @@ hand-exporting `cookies.json`.
 
 PAUSD students reach Schoology through ClassLink. The server:
 
-1. Opens `https://launchpad.classlink.com/pausd` and fills the student ID +
+1. Opens `https://login.classlink.com/my/pausd` and fills the student ID +
    password.
 2. Clicks the **Schoology** tile, which performs SAML SSO into Schoology.
 3. Saves the session to `storage_state.json` so later runs skip the login until
