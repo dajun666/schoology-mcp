@@ -28,7 +28,7 @@ def _int_env(name: str, default: int) -> int:
 
 
 BASE_URL = os.getenv("SCHOOLOGY_BASE_URL", "https://pausd.schoology.com").rstrip("/")
-CLASSLINK_URL = os.getenv("CLASSLINK_URL", "https://launchpad.classlink.com/pausd")
+CLASSLINK_URL = os.getenv("CLASSLINK_URL", "https://login.classlink.com/my/pausd")
 USERNAME = os.getenv("SCHOOLOGY_USERNAME")
 HEADLESS = _flag("SCHOOLOGY_HEADLESS", True)
 
