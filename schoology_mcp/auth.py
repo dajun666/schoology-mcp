@@ -1,7 +1,7 @@
 """Automated login: ClassLink portal -> Schoology SSO.
 
 PAUSD students do not log into Schoology directly. They sign into the
-ClassLink portal (https://launchpad.classlink.com/pausd) with their 8-digit
+ClassLink portal (https://login.classlink.com/my/pausd) with their 8-digit
 student ID and password, then click the Schoology tile, which performs a SAML
 single sign-on into pausd.schoology.com.
 
