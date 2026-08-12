@@ -7,3 +7,15 @@ __pycache__/
 .venv/
 .claude/
 .DS_Store
+tools/
+gdocs-backup/
+gdocs-backup-school/
+gdocs-backup-school-shared/
+gdocs-single/
+
+# Agent/session artifacts, and machine-specific MCP client config
+# (.mcp.json holds absolute paths to this checkout).
+.mcp.json
+.pi/
+.tmp/
+pi-session-*.html

@@ -34,9 +34,14 @@ PAGES = {
     "grades": "/grades/grades",
     "courses": "/courses",
     "calendar": "/calendar",
+    "messages": "/messages",
+    "messages_sent": "/messages/sent",
     # Optional: drop one of your own assignment URLs in here to also verify
     # parse_assignment_info against real markup.
     #   "assignment": "/assignment/<NNNNNNNN>",
+    # NOTE: deliberately no /messages/view/<id> here -- opening a message
+    # thread marks it READ on Schoology's side. Dump one by hand only if you
+    # accept clearing that message's unread badge.
 }
 
 

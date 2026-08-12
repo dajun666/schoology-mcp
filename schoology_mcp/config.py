@@ -110,6 +110,23 @@ STORAGE_STATE_PATH = Path(
     os.getenv("SCHOOLOGY_STORAGE_STATE", str(PROJECT_ROOT / "storage_state.json"))
 )
 
+# Where downloaded/exported materials are cached (a temp area, not a store), and
+# where scripts/watch_once.py keeps its change-detection baseline. Both live
+# here rather than being read ad hoc so `.env` remains the answer to "what can I
+# configure?".
+EXPORT_DIR = os.getenv("SCHOOLOGY_EXPORT_DIR")
+WATCH_STATE_PATH = Path(
+    os.getenv("SCHOOLOGY_WATCH_STATE")
+    or (Path.home() / ".local" / "share" / "schoology-mcp" / "watch-state.json")
+)
+
+
+def is_schoology_url(url: str) -> bool:
+    """True for an absolute URL on this Schoology host, or a bare path."""
+    if not url:
+        return False
+    return url.startswith("/") or BASE_URL.split("//")[-1] in url
+
 
 def _password_from_keyring() -> str | None:
     """Read the password from the configured keyring backend, if available."""
