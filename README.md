@@ -479,7 +479,7 @@ edit the two URLs (and, if your district doesn't use ClassLink SSO,
 | What to change | Where |
 |---|---|
 | Schoology base URL | `SCHOOLOGY_BASE_URL` in `.env` (or the default in `schoology_mcp/config.py`) |
-| ClassLink tenant URL | `CLASSLINK_URL` in `.env` (e.g. `https://launchpad.classlink.com/<your-district>`) |
+| ClassLink tenant URL | `CLASSLINK_URL` in `.env` (e.g. `https://login.classlink.com/my/<your-district>`) |
 | Login flow (if not ClassLink) | `schoology_mcp/auth.py` — replace the ClassLink portal step with your district's IdP (Clever, Google SSO, direct Schoology login, etc.). The Schoology-side scraping in `schoology_mcp/parsers.py` is district-agnostic and should keep working. |
 
 If you ship a working fork for another district, open an issue with a link —
