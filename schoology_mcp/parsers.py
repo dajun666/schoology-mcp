@@ -10,9 +10,39 @@ try several selectors and fall back to text extraction). Refine the selectors
 against the HTML dumped by `scripts/login_check.py`.
 """
 
+import re
 from datetime import datetime
 
 from bs4 import BeautifulSoup
+
+from .fingerprint import fp
+
+# --------------------------------------------------------------------------
+# Page skeleton anchors + empty-state markers
+# --------------------------------------------------------------------------
+#
+# An anchor is a container that exists whether or not the page has any items.
+# `health.evaluate()` uses them to tell "no grades yet" apart from "the class
+# name changed". Verified present in dumps/ -- re-check them after any Schoology
+# markup change, because a stale anchor turns every source into a false `error`.
+
+GRADES_ANCHORS = ("ul.s-grades-course-list", "li.s-grades-course-item", "#main-inner")
+GRADES_EMPTY_MARKERS = ("no grades", "not enrolled in any courses")
+
+UPCOMING_ANCHORS = (".upcoming-events-wrapper", ".upcoming-submissions-wrapper", "#right-column-inner")
+UPCOMING_EMPTY_MARKERS = ("no upcoming", "nothing due")
+
+FEED_ANCHORS = ("#home-feed-container", ".s-edge-feed", "#edge-feed")
+FEED_EMPTY_MARKERS = ("no recent activity", "no updates")
+
+COURSES_ANCHORS = ("li.course-item", "div.course-card", "#main-inner")
+COURSES_EMPTY_MARKERS = ("not enrolled",)
+
+MATERIALS_ANCHORS = ("#folder-contents-table", ".s-js-materials-body")
+MATERIALS_EMPTY_MARKERS = ("no materials", "this folder is empty")
+
+MESSAGES_ANCHORS = ("#main-inner", "#center-inner")
+MESSAGES_EMPTY_MARKERS = ("no messages", "your inbox is empty")
 
 
 # --------------------------------------------------------------------------
@@ -34,6 +64,63 @@ def _clean_text(el):
         return None
     text = " ".join(el.stripped_strings)
     return text if text else None
+
+
+# --------------------------------------------------------------------------
+# Header unread counters (present on every authenticated page)
+# --------------------------------------------------------------------------
+
+# Schoology renders `aria-label="0 unread messages"` / `"1 unread notification"`
+# in the top bar of every page. This is a server-side change signal that needs
+# no caller memory, and it rides along on any page we already fetch. The i18n
+# bundle pluralizes, so the pattern must accept both forms.
+_UNREAD_RE = re.compile(r"(\d+)\s+unread\s+(message|notification)s?", re.I)
+
+
+def parse_header_counters(html):
+    """Extract the top-bar unread counts. Returns None per key if absent."""
+    counters = {"unread_messages": None, "unread_notifications": None}
+    for match in _UNREAD_RE.finditer(html or ""):
+        count, kind = int(match.group(1)), match.group(2).lower()
+        key = "unread_messages" if kind == "message" else "unread_notifications"
+        # First occurrence wins; the header renders before any page content.
+        if counters[key] is None:
+            counters[key] = count
+            # Stop once both are known: the header sits in the first few KB and
+            # scanning on would walk the ~1.9 MB i18n bundle for nothing.
+            if all(v is not None for v in counters.values()):
+                break
+    return counters
+
+
+# --------------------------------------------------------------------------
+# Submission status (derived from icon CLASSES, never the hidden text)
+# --------------------------------------------------------------------------
+
+# Verified in dumps/grades.html. The visually-hidden sentence next to each icon
+# is human-readable but is also folded into the grade cell's text by
+# `_parse_grade_cell`, so deriving from the class list keeps the two independent.
+#
+# IMPORTANT: the absence of an icon means "this row has no dropbox", NOT "the
+# student did not submit". Many rows never have one. There is deliberately no
+# `not_submitted` value -- alerting on absence would be wrong.
+_SUBMISSION_BY_CLASS = (
+    ("grade-pending-icon", "submitted_ungraded"),
+    ("dropbox-icon-inline-image-wrapper", "submitted"),
+    ("common-assessment-icon", "completed_assessment"),
+    ("has-discussion-comment", "posted_discussion"),
+)
+
+
+def _submission_status(row):
+    """Infer submission state from the row's icon classes. Never 'not_submitted'."""
+    classes = set()
+    for span in row.select("span[class]"):
+        classes.update(span.get("class") or [])
+    for marker, status in _SUBMISSION_BY_CLASS:
+        if marker in classes:
+            return status
+    return "unknown"
 
 
 # --------------------------------------------------------------------------
@@ -78,6 +165,14 @@ def _parse_grade_cell(td):
 
 
 def parse_grades(html, base_url):
+    """Parse the gradebook.
+
+    Each row carries two fingerprints so a caller can tell an alert-worthy
+    change from noise:
+      `fp`      -- grade, comment, submission state: "a score was posted"
+      `fp_meta` -- title, due date, category weight: "the teacher fixed a typo"
+    Neither includes anything that changes on its own.
+    """
     soup = BeautifulSoup(html, "html.parser")
     courses = []
     for course_item in soup.select("li.s-grades-course-item"):
@@ -85,6 +180,10 @@ def parse_grades(html, base_url):
         course_grade = _clean_text(
             course_item.select_one(".summary-course .course-grade-value")
         )
+        # The <li> itself has no id; the course id lives on its own course-row
+        # (`data-parent-id=""` marks it as the root of the course's tree).
+        course_row = course_item.select_one("tr.report-row.course-row")
+        course_id = course_row.get("data-id") if course_row else None
         rows = []
         for row in course_item.select("tr.report-row"):
             classes = row.get("class") or []
@@ -100,25 +199,44 @@ def parse_grades(html, base_url):
                 link = title_el.find("a")
                 if link and link.get("href"):
                     assignment_url = absolute_url(link["href"], base_url)
+            row_id = row.get("data-id")
+            parent_id = row.get("data-parent-id") or None
+            grade = _parse_grade_cell(row.select_one("td.grade-column"))
+            comment = _clean_text(row.select_one("td.comment-column .comment"))
+            submission = _submission_status(row)
+            percentage_contrib = _clean_text(row.select_one(".percentage-contrib"))
+            due = _clean_text(row.select_one(".due-date"))
+
+            # Period-row ids repeat across courses ("1120687", and "0" for the
+            # ungraded bucket), so the row id alone is not unique gradebook-wide.
+            # Qualify it with the course to get a key safe for a flat snapshot.
+            uid = f"{course_id or course_title}:{row_id}"
+
             rows.append(
                 {
-                    "id": row.get("data-id"),
-                    "parent_id": row.get("data-parent-id") or None,
+                    "id": row_id,
+                    "uid": uid,
+                    "parent_id": parent_id,
                     "type": row_type,
                     "title": title,
-                    "percentage_contrib": _clean_text(
-                        row.select_one(".percentage-contrib")
-                    ),
-                    "due": _clean_text(row.select_one(".due-date")),
-                    "grade": _parse_grade_cell(row.select_one("td.grade-column")),
-                    "comment": _clean_text(
-                        row.select_one("td.comment-column .comment")
-                    ),
+                    "percentage_contrib": percentage_contrib,
+                    "due": due,
+                    "grade": grade,
+                    "comment": comment,
+                    "submission": submission,
                     "assignment_url": assignment_url,
+                    "fp": fp(uid, grade, comment, submission),
+                    "fp_meta": fp(uid, title, due, percentage_contrib, parent_id),
                 }
             )
         courses.append(
-            {"title": course_title, "course_grade": course_grade, "rows": rows}
+            {
+                "id": course_id,
+                "title": course_title,
+                "course_grade": course_grade,
+                "rows": rows,
+                "fp": fp(course_id or course_title, course_grade),
+            }
         )
     return courses
 
@@ -169,12 +287,24 @@ def parse_upcoming_assignments(html, base_url):
             except (ValueError, OSError, OverflowError):
                 due_iso = None
 
+        # Identity: the numeric id in the url (/assignment/N, /event/N).
+        item_id = None
+        if url:
+            m = re.search(r"/(?:assignment|event)/(\d+)", url)
+            item_id = m.group(1) if m else url
+        item_id = item_id or title
+
         item = {
+            "id": item_id,
             "title": title,
             "course": course,
             "due": due,
             "due_iso": due_iso,
             "url": url,
+            # `due` is deliberately NOT hashed: it renders as "80 days overdue",
+            # which changes every midnight and would fire a false "assignment
+            # changed" alert daily, forever. `due_iso` is the real due time.
+            "fp": fp(item_id, title, course, due_iso),
         }
 
         # Schoology can render the same assignment twice on /home: once as a
@@ -301,6 +431,54 @@ def parse_assignment_info(html, base_url):
 _FEED_ITEM_SELECTOR = "li[id^='edge-assoc-']"
 _REALM_HREF_HINTS = ("/course/", "/group/", "/school/")
 
+# Post bodies are rich text, and school notices are routinely posted AS an
+# image with no words at all -- `.update-body` then yields the empty string and
+# the post looks blank to a reader. Three kinds of <img> appear and only one is
+# content:
+#   - profile avatars (`imagecache-profile_*`): the same few URLs on every post
+#   - emoji, served as images by Google Fonts with the character in `alt`
+#   - the actual embedded picture (`/system/files/attachments/page_embeds/...`
+#     or `/file_download/...`), which needs the session cookie to fetch
+_AVATAR_CLASSES = ("imagecache-profile_sm", "imagecache-profile_reg", "profile-picture")
+_EMOJI_HOSTS = ("fonts.gstatic.com", "notoemoji")
+
+
+def _is_avatar(img) -> bool:
+    classes = " ".join(img.get("class") or [])
+    if any(c in classes for c in _AVATAR_CLASSES):
+        return True
+    return any(c in (img.get("src") or "") for c in ("profile-image", "profile_sm"))
+
+
+def _is_emoji(img) -> bool:
+    return any(h in (img.get("src") or "") for h in _EMOJI_HOSTS)
+
+
+def _extract_post_images(body, base_url):
+    """Pull content images out of a post body, folding emoji back into text.
+
+    Emoji are replaced in place by their `alt` character so the post's text
+    reads the way a human sees it; avatars are dropped; everything else is
+    returned for the caller to fetch.
+    """
+    images = []
+    if body is None:
+        return images
+    for img in body.select("img"):
+        if _is_emoji(img):
+            img.replace_with(img.get("alt") or "")
+            continue
+        if _is_avatar(img):
+            continue
+        src = img.get("src")
+        if not src:
+            continue
+        images.append({
+            "url": absolute_url(src, base_url),
+            "alt": (img.get("alt") or "").strip() or None,
+        })
+    return images
+
 
 def parse_recent_posts(html, base_url, limit=20):
     """Extract recent activity-feed posts from a Schoology home page."""
@@ -309,13 +487,17 @@ def parse_recent_posts(html, base_url, limit=20):
     for li in soup.select(_FEED_ITEM_SELECTOR):
         # Most posts carry text in `.update-body`; link/file shares put their
         # content in `.edge-main` instead.
-        text = _clean_text(li.select_one(".update-body")) or _clean_text(
-            li.select_one(".edge-main")
-        )
+        body = li.select_one(".update-body") or li.select_one(".edge-main")
+        # Must run before the text is extracted: it substitutes emoji images
+        # for their characters, which would otherwise vanish entirely.
+        images = _extract_post_images(body, base_url)
+        text = _clean_text(body)
         author = _clean_text(li.select_one(".long-username a")) or _clean_text(
             li.select_one(".edge-left a[title]")
         )
-        if not text and not author:
+        # An image-only post has no text at all; dropping it here would hide
+        # notices that are posted purely as a picture.
+        if not text and not author and not images:
             continue
 
         # The realm a post went to: first course/group/school link in the
@@ -330,19 +512,174 @@ def parse_recent_posts(html, base_url, limit=20):
                     break
 
         ts = li.get("timestamp")
+        timestamp = int(ts) if ts and ts.isdigit() else None
+        # `li id="edge-assoc-NNNNNNNNNNN"` is the post's own stable id. Note
+        # `url` below is the *realm* link (/course/N), shared by every post in a
+        # course -- it is not an identity key.
+        post_id = (li.get("id") or "").replace("edge-assoc-", "") or None
+
         posts.append(
             {
+                "id": post_id,
                 "author": author,
                 "posted_to": posted_to,
+                # `posted` is empty in the server HTML (JS fills it in), so it is
+                # render-dependent and excluded from the fingerprint.
                 "posted": _clean_text(li.select_one(".edge-footer .created")),
-                "timestamp": int(ts) if ts and ts.isdigit() else None,
+                "timestamp": timestamp,
                 "text": text,
+                "images": images,
                 "url": posted_to_url,
+                # Image COUNT, not the URLs: an added or removed picture is a
+                # real change, but the embed URLs carry generated suffixes whose
+                # stability across renders is unverified, and a URL that churns
+                # would fire a false alert on every run.
+                "fp": fp(post_id, author, posted_to, timestamp, text, len(images)),
             }
         )
         if len(posts) >= limit:
             break
     return posts
+
+
+# --------------------------------------------------------------------------
+# Private messages (verified against real /messages and /messages/sent dumps)
+# --------------------------------------------------------------------------
+
+# Schoology's inbox is the Drupal privatemsg module:
+#   table.privatemsg-list > tr.odd|tr.even
+#   td.privatemsg-list-subject[subject="<FULL subject>"]   <- untruncated
+#     a.subject-link[href="/messages/view/<thread id>"]    <- truncated text
+#     p.privatemsg-list-body                               <- body preview
+#     p.names-date > a[href^="/user/"] + span.small.gray   <- sender + date
+#
+# UNVERIFIED: the unread indicator. Every message in the account was already
+# read when this was written (the header reported 0 unread), so no unread row
+# existed to inspect. Rather than guess a class and report every message as
+# read, `unread` is left None when nothing recognizable is found -- callers
+# should trust `unread_count` from the page header instead.
+_MESSAGE_ROW_SELECTOR = "table.privatemsg-list tr"
+MESSAGE_ID_RE = re.compile(r"/messages/view/(\d+)")
+_UNREAD_ROW_MARKERS = ("unread", "privatemsg-unread", "new")
+
+
+def _row_unread(row):
+    """True if the row is recognizably unread, else None (unknown)."""
+    classes = {c.lower() for c in (row.get("class") or [])}
+    if classes & set(_UNREAD_ROW_MARKERS):
+        return True
+    if row.select_one(".unread, .privatemsg-unread, strong.subject-link"):
+        return True
+    return None
+
+
+def parse_messages(html, base_url):
+    """Parse an inbox / sent-messages listing.
+
+    Returns `{"id","subject","sender","date_text","preview","unread","url","fp"}`.
+    `unread` is excluded from `fp` -- it flips whenever a human opens the
+    message in the real Schoology UI, which is not a change worth alerting on.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    messages = []
+    for row in soup.select(_MESSAGE_ROW_SELECTOR):
+        cell = row.select_one("td.privatemsg-list-subject")
+        if not cell:
+            continue  # header row
+        link = cell.select_one("a.subject-link") or cell.find(
+            "a", href=MESSAGE_ID_RE
+        )
+        href = link.get("href") if link else None
+        match = MESSAGE_ID_RE.search(href or "")
+        thread_id = match.group(1) if match else None
+
+        # The cell's `subject` attribute holds the full subject; the link text
+        # is ellipsized for display.
+        subject = cell.get("subject") or _clean_text(link)
+
+        names_date = cell.select_one("p.names-date")
+        sender = date_text = None
+        if names_date:
+            sender = _clean_text(names_date.find("a", href=re.compile(r"^/user/")))
+            date_text = _clean_text(names_date.select_one("span.small.gray"))
+        if not sender:
+            picture_link = cell.select_one(".picture a[title]")
+            sender = picture_link.get("title") if picture_link else None
+
+        preview = _clean_text(cell.select_one("p.privatemsg-list-body"))
+
+        if not thread_id and not subject:
+            continue
+
+        messages.append(
+            {
+                "id": thread_id,
+                "subject": subject,
+                "sender": sender,
+                "date_text": date_text,
+                "preview": preview,
+                "unread": _row_unread(row),
+                "url": absolute_url(href, base_url) if href else None,
+                "fp": fp(thread_id, subject, sender, date_text, preview),
+            }
+        )
+    return messages
+
+
+def parse_message_thread(html, base_url):
+    """Parse one message thread (/messages/view/NNN).
+
+    Each `.message-body` block holds one message: sender, timestamp and the
+    full text. Attachments, when present, sit in a nested attachments block.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    messages = []
+    for block in soup.select(".message-body"):
+        name_el = block.select_one(".name")
+        author = date_text = None
+        if name_el:
+            author = _clean_text(name_el.find("a"))
+            date_text = _clean_text(name_el.select_one("span.small.gray"))
+
+        # The body is everything except the name header and attachments block.
+        body_parts = []
+        for para in block.find_all("p", recursive=False):
+            text = _clean_text(para)
+            if text:
+                body_parts.append(text)
+        if not body_parts:
+            clone = _clean_text(block) or ""
+            for strip in (author, date_text):
+                if strip:
+                    clone = clone.replace(strip, "", 1)
+            body_parts = [clone.strip()] if clone.strip() else []
+
+        attachments = []
+        seen = set()
+        for a in block.select(".attachments a[href], .s-message-attachments a[href]"):
+            url = absolute_url(a.get("href"), base_url)
+            if url and url not in seen:
+                seen.add(url)
+                attachments.append({"name": _clean_text(a) or url, "url": url})
+
+        messages.append(
+            {
+                "author": author,
+                "date_text": date_text,
+                "text": "\n\n".join(body_parts) or None,
+                "attachments": attachments,
+            }
+        )
+
+    subject = _strip_schoology_suffix(_clean_text(soup.title)) if soup.title else None
+    # The <h1> on a thread page is the generic "Messages"; prefer the real
+    # subject rendered in the thread header.
+    header = _clean_text(soup.select_one(".message-thread-subject, #main-inner h2"))
+    return {
+        "subject": header or subject,
+        "messages": messages,
+        "count": len(messages),
+    }
 
 
 # --------------------------------------------------------------------------
