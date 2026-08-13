@@ -39,9 +39,25 @@ async def login(context: BrowserContext) -> None:
     opened by this function are closed before returning; the cookies persist in
     the context.
     """
+    await _login_via_portal(context, "Schoology", r"schoology\.com")
+
+
+async def login_app(context: BrowserContext, app_name: str, host_pattern: str) -> str:
+    """SSO into any ClassLink app tile. Returns the URL it landed on.
+
+    Same portal, same credentials, different tile -- Infinite Campus needs no
+    login of its own. Cookies for the app's domain land in `context` alongside
+    Schoology's, so both can be used from one browser.
+    """
+    return await _login_via_portal(context, app_name, host_pattern)
+
+
+async def _login_via_portal(
+    context: BrowserContext, app_name: str, host_pattern: str
+) -> str:
     config.require_credentials()
     portal = await context.new_page()
-    schoology: Page | None = None
+    app: Page | None = None
     try:
         log.info("Opening ClassLink portal: %s", config.CLASSLINK_URL)
         await portal.goto(config.CLASSLINK_URL, wait_until="domcontentloaded")
@@ -55,20 +71,22 @@ async def login(context: BrowserContext) -> None:
         else:
             await _submit_credentials(portal, username)
 
-        schoology = await _launch_schoology_tile(context, portal)
+        app = await _launch_schoology_tile(context, portal, app_name)
         try:
-            await schoology.wait_for_url(re.compile(r"schoology\.com"), timeout=45_000)
-            await schoology.wait_for_load_state("networkidle", timeout=30_000)
+            await app.wait_for_url(re.compile(host_pattern), timeout=45_000)
+            await app.wait_for_load_state("networkidle", timeout=30_000)
         except PlaywrightTimeout:
             pass
 
-        if "schoology.com" not in schoology.url or "/login" in schoology.url:
+        landed = app.url
+        if not re.search(host_pattern, landed) or "/login" in landed:
             raise RuntimeError(
-                f"SSO into Schoology did not complete (landed on {schoology.url})."
+                f"SSO into {app_name} did not complete (landed on {landed})."
             )
-        log.info("Logged into Schoology: %s", schoology.url)
+        log.info("Logged into %s: %s", app_name, landed)
+        return landed
     finally:
-        for p in (schoology, portal):
+        for p in (app, portal):
             if p is not None and not p.is_closed():
                 try:
                     await p.close()
@@ -103,18 +121,23 @@ async def _submit_credentials(page: Page, username: Locator) -> None:
         )
 
 
-async def _launch_schoology_tile(context: BrowserContext, page: Page) -> Page:
-    """Click the Schoology app tile on the ClassLink My Apps portal.
+async def _launch_schoology_tile(
+    context: BrowserContext, page: Page, app_name: str = "Schoology"
+) -> Page:
+    """Click an app tile on the ClassLink My Apps portal and return its page.
 
-    The portal is an Angular app: the Schoology tile is an `<application>`
-    custom element with an exact `aria-label="Schoology"` (a pinned `<favorite>`
-    with the same label may also exist -- either launches Schoology via SSO).
-    Matching `aria-label` exactly avoids clicking a neighbouring app's tile (an
-    earlier loose `div:has-text` selector landed on Gale instead).
-    The tile usually opens Schoology in a new tab; handle the same-tab case too.
+    The portal is an Angular app: each tile is an `<application>` custom element
+    with an exact `aria-label` (a pinned `<favorite>` with the same label may
+    also exist -- either launches the app via SSO). Matching `aria-label`
+    exactly avoids clicking a neighbouring app's tile (an earlier loose
+    `div:has-text` selector landed on Gale instead).
+    The tile usually opens in a new tab; handle the same-tab case too.
+
+    `app_name` is a parameter because the portal fronts every district app --
+    Infinite Campus rides the same SSO, so only the label differs.
     """
     tile = page.locator(
-        "application[aria-label='Schoology'], [aria-label='Schoology']"
+        f"application[aria-label='{app_name}'], [aria-label='{app_name}']"
     ).first
     await tile.wait_for(state="visible", timeout=30_000)
     await tile.scroll_into_view_if_needed()

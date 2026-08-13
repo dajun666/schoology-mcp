@@ -111,6 +111,37 @@ the fresh `dumps/`.
 | `download_file` | Download any Drive or Schoology link; size-checked before transferring. |
 | `get_health` | Is the scraper working, or is the account just empty? |
 
+## Infinite Campus: schedule and room numbers (optional, off by default)
+
+Schoology knows the coursework; the district SIS knows *where and when* a class
+meets. Set `CAMPUS_ENABLED=true` to add `get_schedule`:
+
+```
+period  time          room     teacher            course
+1       09:00-09:50   A-12     Doe, Jane          Intro to Engineering
+2       09:57-10:42   B-07     Roe, Richard       Studio Art
+3       10:57-11:42   C-03     Poe, Pat           Biology
+```
+
+It rides the same ClassLink SSO — a different app tile, no extra credentials.
+The student portal is a single-page app, so this reads its JSON API rather than
+scraping rendered HTML: structured data, and no CSS selectors to go stale.
+
+Two things the portal models that the output flattens for you:
+
+- **Bell schedules.** Each class carries a placement per schedule variant —
+  `Full` (the regular day) plus `M`/`T`/`W`/`R`/`F` and one-off dates. Expanding
+  all of them turns 13 classes into 54 near-duplicate rows, so `Full` is used by
+  default. Pass `schedule="R"` to see a block day, where the same class can move
+  by hours — a mid-morning period becoming an early-afternoon block.
+- **Terms.** A year-long course is placed in both semesters, so pass
+  `term="S1"` unless you want each class twice.
+
+Off by default because the host and the tile name are district-specific; when
+disabled the tool is not registered at all, so it costs nothing. Only the
+roster endpoint is read — the portal also exposes the student's legal name,
+district number and state ID, and nothing here touches it.
+
 ## Images in feed posts
 
 School notices are routinely posted as a picture with no words at all. Six of
