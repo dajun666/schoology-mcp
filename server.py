@@ -16,7 +16,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from schoology_mcp import config, downloads, gdocs, health, ical, parsers
+from schoology_mcp import campus, config, downloads, gdocs, health, ical, parsers
 from schoology_mcp.browser import SchoologyClient
 
 _ASSIGNMENT_ID_RE = re.compile(r"/assignment/(\d+)")
@@ -558,6 +558,49 @@ async def download_file(url: str, max_mb: float = 25.0) -> dict[str, Any]:
             "web."
         ),
     }
+
+
+# --------------------------------------------------------------------------
+# Infinite Campus (optional -- CAMPUS_ENABLED, off by default)
+# --------------------------------------------------------------------------
+#
+# Registered conditionally rather than always-present-but-erroring: an unusable
+# tool still costs its schema in every request, and this one is district-
+# specific. When it is off the server looks exactly as it did before.
+
+if config.CAMPUS_ENABLED:
+
+    @mcp.tool()
+    async def get_schedule(
+        term: str | None = None,
+        schedule: str | None = campus.DEFAULT_SCHEDULE,
+    ) -> dict[str, Any]:
+        """Get the class schedule from Infinite Campus: period, time, ROOM number.
+
+        Schoology knows the coursework; the district SIS knows where and when
+        the class actually meets. Use this for "what room is my next class in",
+        "what period is Biology", or the day's running order.
+
+        One row per class per term, ordered by period. `term` ("S1"/"S2") picks
+        a semester -- a year-long course sits in both, so without it every class
+        appears twice.
+
+        `schedule` selects the bell schedule: "Full" (default) is the regular
+        day; "M"/"T"/"W"/"R"/"F" are day-specific variants where times differ
+        (a block day can move a class by hours). Pass None to see every
+        placement. `schedules_available` lists what this district uses.
+        """
+        data = await client.campus_json(campus.ROSTER_PATH)
+        rows = campus.parse_roster(data, term=term, schedule=schedule)
+        return {
+            "base_url": config.CAMPUS_BASE_URL,
+            "term": term,
+            "schedule_used": schedule,
+            "terms_available": campus.terms_in(campus.parse_roster(data)),
+            "schedules_available": campus.schedules_in(data),
+            "count": len(rows),
+            "schedule": rows,
+        }
 
 
 # --------------------------------------------------------------------------

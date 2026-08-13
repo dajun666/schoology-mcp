@@ -22,7 +22,7 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeout
 
-from . import config
+from . import auth, config
 from .auth import login
 
 log = logging.getLogger("schoology_mcp.browser")
@@ -316,6 +316,44 @@ class SchoologyClient:
             "body": body,
             "filename": _filename_from_headers(headers),
         }
+
+    async def campus_json(self, path: str) -> object:
+        """GET a JSON resource from Infinite Campus, logging in if needed.
+
+        Infinite Campus rides the same ClassLink SSO as Schoology, so its
+        cookies live in this same context -- but they expire independently.
+        A response that is not JSON means the portal bounced us to a login
+        page, which is the signal to run the tile flow and retry once.
+        """
+        if not config.CAMPUS_ENABLED:
+            raise RuntimeError(
+                "Infinite Campus is disabled. Set CAMPUS_ENABLED=true in .env "
+                "to turn it on (see .env.example)."
+            )
+
+        url = f"{config.CAMPUS_BASE_URL}{path}"
+        async with self._lock:
+            await self._ensure_browser()
+            for attempt in (1, 2):
+                response = await self._context.request.get(url, timeout=30_000)
+                content_type = response.headers.get("content-type", "")
+                if response.ok and "json" in content_type:
+                    if attempt == 2:
+                        await self._save_state()
+                    return await response.json()
+                if attempt == 1:
+                    log.info("Infinite Campus session missing -- signing in")
+                    await auth.login_app(
+                        self._context,
+                        config.CAMPUS_APP_NAME,
+                        r"infinitecampus\.org",
+                    )
+            raise RuntimeError(
+                f"Infinite Campus returned {response.status} ({content_type!r}) "
+                f"for {path} even after signing in. If the district moved hosts, "
+                "set CAMPUS_BASE_URL; if the portal tile is named differently, "
+                "set CAMPUS_APP_NAME."
+            )
 
     async def _load(
         self,

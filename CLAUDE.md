@@ -122,6 +122,42 @@ picture is a real change, but the embed URLs carry generated suffixes whose
 stability across renders is unverified (the live feed had no images to test
 against), and a churning URL would alert on every run.
 
+### Infinite Campus (`campus.py`, optional)
+
+Gated behind `CAMPUS_ENABLED` (default false) and **conditionally registered** —
+when off, `get_schedule` is not added to the tool list at all, so it costs no
+schema tokens. The host and ClassLink tile name are district-specific, which is
+why it cannot be on by default.
+
+Auth reuses the Schoology flow: `auth.login_app(context, app_name, host_pattern)`
+is the generalized tile launcher (`login()` is now a thin wrapper over it).
+Infinite Campus is just another ClassLink tile, so cookies for both hosts live in
+the same browser context.
+
+The student portal is an SPA — its server HTML is a 19KB shell with no nav in it,
+so **do not scrape it**. It is backed by a JSON API (`/campus/resources/portal/
+roster`, `/campus/resources/portal/grades`), which is what `campus_json()` calls.
+That keeps `campus.py` a pure transform with no selectors to rot.
+
+Two modelling traps the parser exists to flatten:
+
+- The portal emits one placement per **bell schedule**, not per class: `Full`
+  plus `M`/`T`/`W`/`R`/`F` and one-off dates like `8/24`. 13 classes expand to 54
+  rows. `parse_roster` keeps one per term, preferring `Full`, and a course
+  lacking that schedule still comes back on whatever placement it has — dropping
+  a class from a schedule is worse than showing an odd bell time.
+- A year-long course is placed in **both terms**, so it appears twice unless
+  `term` is given. A course missing from one semester is usually real data (it
+  only runs in the other), not a dropped row — check the placements before
+  treating it as a bug.
+
+Period names are not always numeric (counselor slots, advisory, study hall), so
+the sort must tolerate non-numbers, and a course can legitimately have no room.
+
+**Never read `/campus/resources/portal/students`** — it returns the student's
+legal name, district student number and state ID. The roster carries everything a
+schedule needs and none of that.
+
 ### The download cache (`downloads.py`)
 
 One temp-directory cache shared by Drive exports, Schoology attachments and feed

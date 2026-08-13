@@ -121,6 +121,25 @@ WATCH_STATE_PATH = Path(
 )
 
 
+# --------------------------------------------------------------------------
+# Infinite Campus (optional, OFF by default)
+# --------------------------------------------------------------------------
+#
+# The district's SIS. It holds the things Schoology does not: the bell-schedule
+# with room numbers, period times and the official course roster. It is reached
+# through the same ClassLink portal as Schoology -- a different app tile, no
+# separate credentials.
+#
+# Off unless explicitly enabled: the URL is district-specific, and a tile that
+# does not exist would make every call fail for someone who forked this repo.
+CAMPUS_ENABLED = _flag("CAMPUS_ENABLED", False)
+CAMPUS_BASE_URL = os.getenv(
+    "CAMPUS_BASE_URL", "https://pausdca.infinitecampus.org"
+).rstrip("/")
+# The exact `aria-label` of the ClassLink tile that launches it.
+CAMPUS_APP_NAME = os.getenv("CAMPUS_APP_NAME", "Infinite Campus")
+
+
 def is_schoology_url(url: str) -> bool:
     """True for an absolute URL on this Schoology host, or a bare path."""
     if not url:
