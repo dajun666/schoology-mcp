@@ -1,0 +1,109 @@
+{
+  "_comment": [
+    "SYNTHETIC -- see sections.json. This is ONE section's",
+    "/v1/users/<uid>/grades?section_id=<id> payload. Deliberately awkward:",
+    "  * an ungraded assignment (grade: null) must NOT render as 0",
+    "  * a null comment alongside a real one",
+    "  * `timestamp` is when the score was entered; it must stay OUT of `fp`,",
+    "    because a teacher fixing a typo refreshes it and that would alert daily",
+    "  * TWO gradebook entries sharing period id 'p2000001'. Real payloads",
+    "    usually carry one, but a course placed in both terms carries two, and",
+    "    period ids repeat across them -- so the period row id must be qualified",
+    "    by the entry's own section_id or the two rows collapse onto one uid and",
+    "    snapshot() silently drops one from every future diff.",
+    "  * the entries' section_id values (1000000001 / 1000000009) deliberately",
+    "    do NOT both match the roster id: attribution comes from the id that was",
+    "    ASKED for, never from what the payload reports."
+  ],
+  "section": [
+    {
+      "section_id": "1000000001",
+      "period": [
+        {
+          "period_id": "p2000001",
+          "period_title": "26-27 S1",
+          "assignment": [
+            {
+              "enrollment_id": 3000000001,
+              "assignment_id": 2000000011,
+              "grade": 92,
+              "exception": 0,
+              "max_points": 100,
+              "is_final": 0,
+              "timestamp": 1780000000,
+              "comment": "Nice work on the diagram.",
+              "comment_status": null,
+              "override": null,
+              "type": "assignment"
+            },
+            {
+              "enrollment_id": 3000000001,
+              "assignment_id": 2000000012,
+              "grade": null,
+              "exception": 0,
+              "max_points": 50,
+              "is_final": 0,
+              "timestamp": 0,
+              "comment": null,
+              "comment_status": null,
+              "override": null,
+              "type": "assignment"
+            }
+          ],
+          "final_grade": [
+            {
+              "period_id": "p2000001",
+              "grade": 92,
+              "weight": 100
+            }
+          ]
+        }
+      ],
+      "final_grade": [
+        {
+          "period_id": "p2000001",
+          "grade": 92,
+          "weight": 100
+        }
+      ]
+    },
+    {
+      "section_id": "1000000009",
+      "period": [
+        {
+          "period_id": "p2000001",
+          "period_title": "26-27 S1",
+          "assignment": [
+            {
+              "enrollment_id": 3000000009,
+              "assignment_id": 2000000091,
+              "grade": 75,
+              "exception": 0,
+              "max_points": 100,
+              "is_final": 0,
+              "timestamp": 1779999000,
+              "comment": null,
+              "comment_status": null,
+              "override": null,
+              "type": "assignment"
+            }
+          ],
+          "final_grade": [
+            {
+              "period_id": "p2000001",
+              "grade": 75,
+              "weight": 100
+            }
+          ]
+        }
+      ],
+      "final_grade": [
+        {
+          "period_id": "p2000001",
+          "grade": 75,
+          "weight": 100
+        }
+      ]
+    }
+  ]
+}

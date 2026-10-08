@@ -1,0 +1,144 @@
+[
+ {
+  "responsiveSessionID": 9001,
+  "sessionName": "FLEX; Mon 01/05/2026",
+  "startDate": 1000000000000,
+  "endDate": 1000000000000,
+  "sessionOpen": true,
+  "offerings": [
+   {
+    "responsiveOfferingID": 70003,
+    "responsiveOfferingName": "Zeta Room",
+    "description": "",
+    "maxStudents": 6,
+    "courseNumber": "X9901",
+    "sectionNumber": "3",
+    "teacherDisplay": "Third, Teacher",
+    "roomName": "Z-03",
+    "currentStudents": 6,
+    "rosterID": 0,
+    "teacherRequest": false,
+    "reason": ""
+   },
+   {
+    "responsiveOfferingID": 70002,
+    "responsiveOfferingName": "Middle Room",
+    "description": "Open lab",
+    "maxStudents": 20,
+    "courseNumber": "X9901",
+    "sectionNumber": "2",
+    "teacherDisplay": "Second, Teacher",
+    "roomName": "Z-02",
+    "currentStudents": 5,
+    "rosterID": 0,
+    "teacherRequest": false,
+    "reason": ""
+   },
+   {
+    "responsiveOfferingID": 70001,
+    "responsiveOfferingName": "Alpha Room",
+    "description": "",
+    "maxStudents": 10,
+    "courseNumber": "X9901",
+    "sectionNumber": "1",
+    "teacherDisplay": "First, Teacher",
+    "roomName": "Z-01",
+    "currentStudents": 10,
+    "rosterID": 6000000001,
+    "teacherRequest": false,
+    "reason": ""
+   }
+  ]
+ },
+ {
+  "responsiveSessionID": 9002,
+  "sessionName": "FLEX; Tue 01/06/2026",
+  "startDate": 1000000000000,
+  "endDate": 1000000000000,
+  "sessionOpen": true,
+  "offerings": [
+   {
+    "responsiveOfferingID": 70011,
+    "responsiveOfferingName": "Only Room",
+    "description": "",
+    "maxStudents": 30,
+    "courseNumber": "X9901",
+    "sectionNumber": "11",
+    "teacherDisplay": "Only, Teacher",
+    "roomName": "Z-11",
+    "currentStudents": 12,
+    "rosterID": 6000000002,
+    "teacherRequest": false,
+    "reason": ""
+   }
+  ]
+ },
+ {
+  "responsiveSessionID": 9003,
+  "sessionName": "FLEX; Wed 01/07/2026",
+  "startDate": 1000000000000,
+  "endDate": 1000000000000,
+  "sessionOpen": true,
+  "offerings": [
+   {
+    "responsiveOfferingID": 70021,
+    "responsiveOfferingName": "Assigned Room",
+    "description": "",
+    "maxStudents": 12,
+    "courseNumber": "X9901",
+    "sectionNumber": "21",
+    "teacherDisplay": "Assigning, Teacher",
+    "roomName": "Z-21",
+    "currentStudents": 4,
+    "rosterID": 6000000003,
+    "teacherRequest": true,
+    "reason": "Make-up test"
+   },
+   {
+    "responsiveOfferingID": 70022,
+    "responsiveOfferingName": "Other Room",
+    "description": "",
+    "maxStudents": 12,
+    "courseNumber": "X9901",
+    "sectionNumber": "22",
+    "teacherDisplay": "Other, Teacher",
+    "roomName": "Z-22",
+    "currentStudents": 1,
+    "rosterID": 0,
+    "teacherRequest": false,
+    "reason": ""
+   }
+  ]
+ },
+ {
+  "responsiveSessionID": 9004,
+  "sessionName": "FLEX; Thu 01/08/2026",
+  "startDate": 1000000000000,
+  "endDate": 1000000000000,
+  "sessionOpen": true,
+  "offerings": []
+ },
+ {
+  "responsiveSessionID": 9005,
+  "sessionName": "FLEX; Fri 01/09/2026",
+  "startDate": 1000000000000,
+  "endDate": 1000000000000,
+  "sessionOpen": false,
+  "offerings": [
+   {
+    "responsiveOfferingID": 70031,
+    "responsiveOfferingName": "Closed Room",
+    "description": "",
+    "maxStudents": 12,
+    "courseNumber": "X9901",
+    "sectionNumber": "31",
+    "teacherDisplay": "Closed, Teacher",
+    "roomName": "Z-31",
+    "currentStudents": 2,
+    "rosterID": 0,
+    "teacherRequest": false,
+    "reason": ""
+   }
+  ]
+ }
+]

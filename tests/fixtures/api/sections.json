@@ -1,0 +1,48 @@
+{
+  "_comment": [
+    "SYNTHETIC. This repo is public -- no real section/course ids, uids, course",
+    "titles or teacher names may ever appear in a fixture. Field names and value",
+    "shapes mirror a real /v1/users/<uid>/sections response; every value is made up.",
+    "Note ids arrive as STRINGS here while /v1/.../grades returns section_id as a",
+    "string too, but assignment ids come back as INTEGERS -- the join has to",
+    "normalize or it silently matches nothing."
+  ],
+  "section": [
+    {
+      "id": "1000000001",
+      "course_title": "Intro to Widgets",
+      "course_code": "100001",
+      "course_id": "1000000101",
+      "school_id": "1000000",
+      "building_id": "7000000",
+      "access_code": "",
+      "section_title": "1 (0001 1 Intro to Widgets) Smith",
+      "section_code": "",
+      "section_school_code": "800001",
+      "synced": "0",
+      "active": 1,
+      "description": "",
+      "links": {
+        "self": "https://example.schoology.com/v1/sections/1000000001"
+      }
+    },
+    {
+      "id": "1000000002",
+      "course_title": "Advanced Sprockets",
+      "course_code": "100002",
+      "course_id": "1000000102",
+      "school_id": "1000000",
+      "building_id": "7000000",
+      "access_code": "",
+      "section_title": "3 (0002 1 Advanced Sprockets) Jones",
+      "section_code": "",
+      "section_school_code": "800002",
+      "synced": "0",
+      "active": 1,
+      "description": "",
+      "links": {
+        "self": "https://example.schoology.com/v1/sections/1000000002"
+      }
+    }
+  ]
+}

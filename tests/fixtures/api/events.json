@@ -1,0 +1,82 @@
+{
+  "_comment": [
+    "SYNTHETIC -- see sections.json. One /v1/users/<uid>/events window.",
+    "The window parameters are start_date/end_date (YYYY-MM-DD). Passing",
+    "start/end instead does NOT error: they are read as paging offsets and the",
+    "reply is a cheerful {\"event\": [], \"total\": N}.",
+    "  * event ids and assignment ids are DISJOINT sequences: /assignment/<event_id>",
+    "    is a 403, so links must be built from the event's own assignment_id",
+    "Cases here:",
+    "  * type=event that is really an assignment (a teacher posting work as a",
+    "    calendar entry) -- it never reaches the upcoming widget or gradebook",
+    "  * the SAME item twice under two ids: teachers do create duplicates, so",
+    "    deduplication keys on (title, start, section_id), not id",
+    "  * an HTML-escaped title -- /v1 escapes these and it is easy to miss",
+    "  * realm=school with no section_id, which must not crash the join"
+  ],
+  "event": [
+    {
+      "id": 5000000001,
+      "title": "Widget Lab Writeup",
+      "description": "",
+      "start": "2026-09-04 23:59:00",
+      "has_end": 0,
+      "end": "",
+      "all_day": 0,
+      "type": "assignment",
+      "realm": "section",
+      "section_id": 1000000001,
+      "assignment_id": 4000000001,
+      "web_url": "https://app.schoology.com/assignment/4000000001"
+    },
+    {
+      "id": 5000000002,
+      "title": "Widget Reading Due",
+      "description": "",
+      "start": "2026-09-05 09:00:00",
+      "has_end": 0,
+      "end": "",
+      "all_day": 0,
+      "type": "event",
+      "realm": "section",
+      "section_id": 1000000001
+    },
+    {
+      "id": 5000000003,
+      "title": "Widget Reading Due",
+      "description": "",
+      "start": "2026-09-05 09:00:00",
+      "has_end": 0,
+      "end": "",
+      "all_day": 0,
+      "type": "event",
+      "realm": "section",
+      "section_id": 1000000001
+    },
+    {
+      "id": 5000000004,
+      "title": "Smith &amp; Jones Guest Talk",
+      "description": "",
+      "start": "2026-09-06 10:00:00",
+      "has_end": 1,
+      "end": "2026-09-06 11:00:00",
+      "all_day": 0,
+      "type": "event",
+      "realm": "school"
+    },
+    {
+      "id": 5000000005,
+      "title": "Sprocket Quiz",
+      "description": "",
+      "start": "2026-09-07 23:59:00",
+      "has_end": 0,
+      "end": "",
+      "all_day": 0,
+      "type": "assessment",
+      "realm": "section",
+      "section_id": 1000000002,
+      "assignment_id": 4000000005,
+      "web_url": "https://app.schoology.com/assignment/4000000005"
+    }
+  ]
+}

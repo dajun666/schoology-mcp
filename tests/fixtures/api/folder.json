@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "SYNTHETIC -- one /v1/courses/<cid>/folder/<fid> level. `folder-item`",
+    "carries `type`, which is what makes the recursive walk possible without",
+    "any markup guessing. The HTML materials page could only ever be read one",
+    "level deep, so everything below a subfolder was invisible to every tool."
+  ],
+  "self": {"id": 0, "title": "", "type": "folder"},
+  "folder-item": [
+    {"id": 6000000001, "title": "Unit 1 &amp; Intro", "type": "folder",
+     "available": 1, "description": ""},
+    {"id": 6000000002, "title": "Syllabus", "type": "document",
+     "available": 1, "description": "Course syllabus"},
+    {"id": 6000000003, "title": "Widget Lab Writeup", "type": "assignment",
+     "available": 1, "due": "2026-09-04 23:59:00"}
+  ]
+}

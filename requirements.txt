@@ -1,0 +1,10 @@
+mcp>=1.0,<2
+playwright>=1.57
+beautifulsoup4>=4.12
+python-dotenv>=1.0
+keyring>=24
+# Encrypted-file keyring backend for headless Linux (no OS secret store).
+# Harmless elsewhere; only used when SCHOOLOGY_KEYRING_BACKEND=cryptfile.
+keyrings.cryptfile>=1.3
+# /v1 JSON API client (browserless path). Already present transitively via mcp.
+httpx>=0.27,<1
